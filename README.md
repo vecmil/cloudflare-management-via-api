@@ -5,9 +5,9 @@ Ready:
 > ✅ Domain list with IP exporting to txt file 
 
 To-Do:
-> 📋 Adding new domain with IP
-> 📋 IP change for exiting domain
-> 📋 Other records management
-> 📋 SSL  modes
+> 📋 Adding new domain with IP\
+> 📋 IP change for exiting domain\
+> 📋 Other records management\
+> 📋 SSL  modes\
 > 📋 ...
 
