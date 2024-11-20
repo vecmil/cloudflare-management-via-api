@@ -8,25 +8,25 @@ import os
 import urllib3
 import argparse
 
-# Отключаем предупреждения
+# Disable warnings
 urllib3.disable_warnings(urllib3.exceptions.NotOpenSSLWarning)
 
-# Файлы для хранения данных
+# Files for data storage
 DOMAINS_FILE = 'domains.txt'
 CONFIG_FILE = 'api_config.json'
 RESULTS_FILE = 'results.txt'
 
 def load_api_configs():
-    """Загрузка конфигураций API из JSON файла"""
+    """Loading API configurations from JSON file"""
     try:
         with open(CONFIG_FILE, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"Файл {CONFIG_FILE} не найден!")
+        print(f"File {CONFIG_FILE} not found!")
         return {}
 
 def get_all_zones(api_token):
-    """Получение ВСЕХ зон (доменов) в аккаунте с постраничной навигацией"""
+    """Getting ALL zones (domains) in the account with pagination"""
     headers = {
         'Authorization': f'Bearer {api_token}',
         'Content-Type': 'application/json'
@@ -34,7 +34,7 @@ def get_all_zones(api_token):
 
     all_zones = []
     page = 1
-    per_page = 50  # Максимальное количество доменов на страницу в Cloudflare API
+    per_page = 50  # Maximum number of domains per page in Cloudflare API
 
     while True:
         url = f'https://api.cloudflare.com/client/v4/zones?page={page}&per_page={per_page}'
@@ -47,7 +47,7 @@ def get_all_zones(api_token):
                 zones = data['result']
                 all_zones.extend(zones)
                 
-                # Проверяем, есть ли еще страницы
+                # Check if there are more pages
                 total_pages = data['result_info'].get('total_pages', 0)
                 
                 if page >= total_pages:
@@ -55,18 +55,18 @@ def get_all_zones(api_token):
                 
                 page += 1
             else:
-                print("Не удалось получить список зон")
+                print("Failed to get zones list")
                 break
         except requests.exceptions.RequestException as e:
-            print(f"Ошибка при получении списка зон: {e}")
+            print(f"Error getting zones list: {e}")
             break
 
     return all_zones
 
 def process_domains_for_account(api_token, account_name):
-    """Обработка доменов для конкретного аккаунта"""
+    """Processing domains for a specific account"""
     zones = get_all_zones(api_token)
-    print(f"Найдено доменов в аккаунте {account_name}: {len(zones)}")
+    print(f"Found domains in account {account_name}: {len(zones)}")
     
     account_results = []
     
@@ -79,7 +79,7 @@ def process_domains_for_account(api_token, account_name):
             'Content-Type': 'application/json'
         }
         
-        # Получаем A записи
+        # Getting A records
         url = f'https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type=A'
         try:
             response = requests.get(url, headers=headers)
@@ -94,53 +94,53 @@ def process_domains_for_account(api_token, account_name):
                         account_results.append(result)
         
         except requests.exceptions.RequestException as e:
-            print(f"Ошибка при получении записей для {domain}: {e}")
+            print(f"Error getting records for {domain}: {e}")
     
     return account_results
 
 def export_dns_records(api_configs):
-    """Экспорт DNS записей для всех аккаунтов"""
+    """Export DNS records for all accounts"""
     all_results = []
     
-    # Используем многопоточность для обработки аккаунтов
+    # Using multithreading for processing accounts
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(api_configs)) as executor:
-        # Подготовка задач
+        # Preparing tasks
         future_to_account = {
             executor.submit(process_domains_for_account, account_data['token'], account_name): account_name 
             for account_name, account_data in api_configs.items()
         }
         
-        # Сбор результатов
+        # Collecting results
         for future in concurrent.futures.as_completed(future_to_account):
             account_results = future.result()
             all_results.extend(account_results)
     
-    # Запись результатов в файл
+    # Writing results to file
     with open(RESULTS_FILE, 'w') as f:
         f.write("Domain;IP;Account\n")
         f.writelines(all_results)
     
-    print(f"Экспорт DNS записей завершен. Результат сохранен в {RESULTS_FILE}")
+    print(f"DNS records export completed. Results saved in {RESULTS_FILE}")
 
 def get_domain_ip(domain, api_configs):
-    """Получение IP для конкретного домена"""
-    # Сначала ищем в локальном файле results.txt
+    """Getting IP for a specific domain"""
+    # First searching in local results.txt file
     try:
         with open(RESULTS_FILE, 'r') as f:
-            # Пропускаем заголовок
+            # Skip header
             next(f)
             for line in f:
                 parts = line.strip().split(';')
                 if len(parts) >= 2 and parts[0].lower() == domain.lower():
-                    # Возвращаем формат: домен - IP (Аккаунт: account)
-                    account = parts[2] if len(parts) > 2 else "Неизвестный аккаунт"
-                    return f"{domain} - {parts[1]} (Аккаунт: {account})"
+                    # Return format: domain - IP (Account: account)
+                    account = parts[2] if len(parts) > 2 else "Unknown account"
+                    return f"{domain} - {parts[1]} (Account: {account})"
     except FileNotFoundError:
-        print(f"Файл {RESULTS_FILE} не найден. Выполняется поиск через API.")
+        print(f"File {RESULTS_FILE} not found. Searching via API.")
     except Exception as e:
-        print(f"Ошибка при чтении {RESULTS_FILE}: {e}")
+        print(f"Error reading {RESULTS_FILE}: {e}")
 
-    # Если в локальном файле не нашли, ищем через API
+    # If not found in local file, search via API
     for account_name, account_data in api_configs.items():
         api_token = account_data['token']
         
@@ -165,73 +165,73 @@ def get_domain_ip(domain, api_configs):
                         records = data['result']
                         for record in records:
                             if record['type'] == 'A' and (record['name'] == '@' or record['name'] == domain):
-                                return f"{domain} - {record['content']} (Аккаунт: {account_name})"
+                                return f"{domain} - {record['content']} (Account: {account_name})"
                 except requests.exceptions.RequestException:
                     pass
     
     return None
 
 def main():
-    # Парсинг аргументов командной строки
+    # Parsing command line arguments
     parser = argparse.ArgumentParser(description='Cloudflare Domain IP Search')
-    parser.add_argument('-d', '--domain', help='Домен для проверки')
-    parser.add_argument('-u', '--update', action='store_true', help='Обновить базу доменов')
+    parser.add_argument('-d', '--domain', help='Domain to check')
+    parser.add_argument('-u', '--update', action='store_true', help='Update domain database')
     
     args = parser.parse_args()
 
-    # Загрузка конфигураций API
+    # Loading API configurations
     api_configs = load_api_configs()
     
     if not api_configs:
-        print("Нет доступных API конфигураций!")
+        print("No API configurations available!")
         return
 
-    # Если переданы аргументы, выполняем соответствующие действия
+    # If arguments are provided, execute corresponding actions
     if args.domain:
         ip = get_domain_ip(args.domain, api_configs)
         if ip:
-            print(f"Найдено: {ip}")
+            print(f"Found: {ip}")
             with open(DOMAINS_FILE, 'a') as f:
                 f.write(f"{ip}\n")
         else:
-            print(f"IP для {args.domain} не найден ни в одном аккаунте")
+            print(f"IP for {args.domain} not found in any account")
     
     elif args.update:
         start_time = time.time()
         export_dns_records(api_configs)
-        print(f"Время выполнения: {time.time() - start_time:.2f} секунд")
+        print(f"Execution time: {time.time() - start_time:.2f} seconds")
     
-    # Если аргументов нет - запускаем интерактивный режим
+    # If no arguments - run interactive mode
     else:
         while True:
-            print("\nВыберите действие:")
-            print("1 - Проверить домен")
-            print("2 - Обновить базу доменов")
-            print("3 - Выйти")
+            print("\nSelect action:")
+            print("1 - Check domain")
+            print("2 - Update domain database")
+            print("3 - Exit")
             
-            choice = input("Введите номер действия: ")
+            choice = input("Enter action number: ")
 
             if choice == '1':
-                domain = input("Введите домен (без www, например: example.com): ").strip()
+                domain = input("Enter domain (without www, example: example.com): ").strip()
                 
                 ip = get_domain_ip(domain, api_configs)
                 if ip:
-                    print(f"Найдено: {ip}")
+                    print(f"Found: {ip}")
                     with open(DOMAINS_FILE, 'a') as f:
                         f.write(f"{ip}\n")
                 else:
-                    print(f"IP для {domain} не найден ни в одном аккаунте")
+                    print(f"IP for {domain} not found in any account")
             
             elif choice == '2':
                 start_time = time.time()
                 export_dns_records(api_configs)
-                print(f"Время выполнения: {time.time() - start_time:.2f} секунд")
+                print(f"Execution time: {time.time() - start_time:.2f} seconds")
             
             elif choice == '3':
                 break
             
             else:
-                print("Неверный выбор. Попробуйте снова.")
+                print("Invalid choice. Try again.")
 
 if __name__ == "__main__":
     main()
